@@ -1344,6 +1344,12 @@ a {
   flex-wrap: wrap;
   gap: 8px;
 }
+.movement-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
 .file-pill {
   display: inline-flex;
   align-items: center;
@@ -1605,6 +1611,10 @@ a {
       </div>
     </div>
 
+    <div class="inventory-sidebar__footer">
+      <a class="button button--ghost button--full" href="index.php">← Return to dashboard</a>
+    </div>
+
   </aside>
 
   <main class="inventory-main notes-main">
@@ -1838,16 +1848,19 @@ a {
                     <td><span class="tag status-<?php echo sanitize((string)$movement['transfer_status']); ?>"><?php echo ucfirst((string)$movement['transfer_status']); ?></span></td>
                     <td><?php echo sanitize(inventory_format_datetime($movement['ts'] ?? '')); ?></td>
                     <td>
-                      <?php if ($attachments): ?>
-                        <div class="movement-files">
-                          <?php foreach ($attachments as $file): ?>
-                            <?php $displayLabel = inventory_format_file_label($file, (array)$sectorOptions); ?>
-                            <a class="file-pill" href="<?php echo sanitize((string)$file['file_url']); ?>" target="_blank" rel="noopener">📎 <?php echo sanitize($displayLabel); ?></a>
-                          <?php endforeach; ?>
-                        </div>
-                      <?php else: ?>
-                        <span class="muted small">No attachments</span>
-                      <?php endif; ?>
+                      <div class="movement-actions">
+                        <?php if ($attachments): ?>
+                          <div class="movement-files">
+                            <?php foreach ($attachments as $file): ?>
+                              <?php $displayLabel = inventory_format_file_label($file, (array)$sectorOptions); ?>
+                              <a class="file-pill" href="<?php echo sanitize((string)$file['file_url']); ?>" target="_blank" rel="noopener">📎 <?php echo sanitize($displayLabel); ?></a>
+                            <?php endforeach; ?>
+                          </div>
+                        <?php else: ?>
+                          <span class="muted small">No attachments</span>
+                        <?php endif; ?>
+                        <a class="button button--tiny" href="transfer_pdf.php?movement_id=<?php echo $movementId; ?>" target="_blank" rel="noopener">Transfer paper</a>
+                      </div>
                     </td>
                   </tr>
                 <?php endforeach; ?>
@@ -2232,7 +2245,6 @@ a {
     <?php endforeach; ?>
   <?php endforeach; ?>
 <?php endif; ?>
-
 
 
 <script>
