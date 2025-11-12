@@ -587,6 +587,7 @@ $pendingCount = count($pendingMovements);
 $currentUserDisplay = current_user() ?? [];
 $currentUserRoleLabel = current_user_role_key() ?? 'Manager';
 $currentUserName = trim((string)($currentUserDisplay['name'] ?? ($currentUserDisplay['email'] ?? 'John Doe')));
+$currentUserEmail = trim((string)($currentUserDisplay['email'] ?? ''));
 $currentUserInitials = '';
 if ($currentUserName !== '') {
     $nameParts = preg_split('/\s+/', $currentUserName) ?: [];
@@ -668,61 +669,89 @@ $dashboardStats = [
 $title = 'Inventory';
 include __DIR__ . '/includes/header.php';
 ?>
-<div class="inventory-app">
-  <aside class="inventory-app__sidebar">
-    <div class="inventory-app__brand">
-      <div class="inventory-app__brand-icon">INV</div>
-      <div class="inventory-app__brand-meta">
-        <strong>Inventory Suite</strong>
-        <span>Operations Control</span>
+<div class="inventory-shell">
+  <aside class="inventory-sidebar">
+    <div class="brand">
+      <div class="brand__title"><span class="icon">📦</span>Inventory workspace</div>
+      <div class="brand__subtitle">Signed in as <?php echo sanitize($currentUserEmail !== '' ? $currentUserEmail : $currentUserName); ?></div>
+    </div>
+
+    <?php if ($canManage): ?>
+      <button type="button" class="button button--full" data-modal-open="modal-add">New item</button>
+    <?php endif; ?>
+
+    <div class="inventory-sidebar__card">
+      <div class="inventory-sidebar__card-title">Snapshot</div>
+      <ul class="inventory-sidebar__metrics">
+        <?php foreach ($dashboardStats as $stat): ?>
+          <li>
+            <span class="label"><?php echo sanitize($stat['label']); ?></span>
+            <strong><?php echo sanitize($stat['value']); ?></strong>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+
+    <div class="inventory-sidebar__section">
+      <div class="inventory-sidebar__heading">Quick actions</div>
+      <div class="stack">
+        <?php if ($canManage): ?>
+          <button type="button" class="button button--ghost" data-modal-open="modal-bulk-add">Bulk add items</button>
+          <button type="button" class="button button--ghost" data-modal-open="modal-bulk-move">Bulk movement</button>
+        <?php endif; ?>
+        <a class="button button--subtle" href="inventory_diag.php">Inventory diagnostics</a>
       </div>
     </div>
-    <nav class="inventory-app__nav">
+
+  </aside>
+
+  <main class="inventory-main">
+    <header class="inventory-header">
+      <div class="inventory-header__title">
+        <h1 id="inventory-view-title">Dashboard</h1>
+        <span id="inventory-view-subtitle">Overview of your inventory system</span>
+      </div>
+      <div class="inventory-header__actions">
+        <div class="inventory-header__search" data-inventory-search>
+          <input type="search" id="inventory-search" placeholder="Search items by name, SKU or location…" autocomplete="off">
+        </div>
+        <div class="inventory-header__buttons">
+          <button type="button" class="button button--subtle" id="inventory-export-btn">Export</button>
+          <?php if ($canManage): ?>
+            <button type="button" class="button" id="inventory-primary-action" data-modal-open="modal-add">Quick action</button>
+          <?php endif; ?>
+        </div>
+      </div>
+    </header>
+
+    <nav class="inventory-tabs" role="tablist">
       <?php foreach ($navItems as $index => $item): ?>
         <button
           type="button"
-          class="inventory-app__nav-item<?php echo $index === 0 ? ' is-active' : ''; ?>"
+          role="tab"
+          class="inventory-tab<?php echo $index === 0 ? ' is-active' : ''; ?>"
           data-view-target="<?php echo sanitize($item['id']); ?>"
           data-subtitle="<?php echo sanitize($item['subtitle']); ?>"
           data-add-label="<?php echo sanitize($item['add_label']); ?>"
           data-add-target="<?php echo sanitize($item['add_target']); ?>"
         >
-          <span class="inventory-app__nav-icon" aria-hidden="true"><?php echo $item['icon']; ?></span>
-          <span><?php echo sanitize($item['label']); ?></span>
+          <span class="inventory-tab__icon" aria-hidden="true"><?php echo $item['icon']; ?></span>
+          <span class="inventory-tab__body">
+            <span class="inventory-tab__label"><?php echo sanitize($item['label']); ?></span>
+            <span class="inventory-tab__meta"><?php echo sanitize($item['subtitle']); ?></span>
+          </span>
         </button>
       <?php endforeach; ?>
     </nav>
-    <div class="inventory-app__sidebar-footer">
-      <div class="inventory-app__user-avatar" aria-hidden="true"><?php echo sanitize($currentUserInitials); ?></div>
-      <div class="inventory-app__user-meta">
-        <strong><?php echo sanitize($currentUserName !== '' ? $currentUserName : 'John Doe'); ?></strong>
-        <span><?php echo sanitize($currentUserRoleLabel !== '' ? $currentUserRoleLabel : 'Manager'); ?></span>
-      </div>
-    </div>
-  </aside>
 
-  <div class="inventory-app__main">
-    <header class="inventory-app__header">
-      <div>
-        <h1 id="inventory-view-title">Dashboard</h1>
-        <p id="inventory-view-subtitle">Overview of your inventory system</p>
-      </div>
-      <div class="inventory-app__header-actions">
-        <button type="button" class="btn btn-ghost" id="inventory-export-btn">Export</button>
-        <?php if ($canManage): ?>
-          <button type="button" class="btn primary" id="inventory-primary-action" data-modal-open="modal-add">Quick Action</button>
-        <?php endif; ?>
-      </div>
-    </header>
-
-    <div class="inventory-app__alerts">
+    <div class="inventory-main__messages">
       <?php flash_message(); ?>
       <?php if ($errors): ?>
         <div class="flash flash-error"><?php echo sanitize(implode(' ', $errors)); ?></div>
       <?php endif; ?>
     </div>
 
-    <div class="inventory-app__content">
+    <div class="inventory-main__body">
       <section class="inventory-view inventory-view--active" data-view="dashboard">
         <div class="inventory-dashboard">
           <div class="inventory-dashboard__stats">
@@ -739,7 +768,7 @@ include __DIR__ . '/includes/header.php';
 
           <div class="inventory-dashboard__activity">
             <header class="inventory-dashboard__section-header">
-              <h2>Recent Activity</h2>
+              <h2>Recent activity</h2>
               <span><?php echo number_format(count($recentMovements)); ?> events</span>
             </header>
             <ul class="inventory-activity-list">
@@ -758,19 +787,23 @@ include __DIR__ . '/includes/header.php';
                   <div class="inventory-activity-list__meta">
                     <strong><?php echo sanitize($itemName); ?></strong>
                     <span class="inventory-activity-list__details">
-                      <?php echo (int)$movement['amount']; ?> units · <?php echo sanitize(inventory_format_datetime($movement['ts'] ?? '')); ?>
-                    </span>
-                    <span class="inventory-activity-list__details">
-                      Route: <?php echo $sectorFrom !== '' ? sanitize($sectorFrom) : '—'; ?> → <?php echo $sectorTo !== '' ? sanitize($sectorTo) : '—'; ?>
+                      <?php echo sanitize(inventory_format_datetime($movement['ts'] ?? '')); ?> ·
+                      <?php if ($sectorFrom !== '' || $sectorTo !== ''): ?>
+                        <?php echo $sectorFrom !== '' ? sanitize($sectorFrom) : 'Unassigned'; ?> → <?php echo $sectorTo !== '' ? sanitize($sectorTo) : 'Unassigned'; ?>
+                      <?php else: ?>
+                        Internal movement
+                      <?php endif; ?>
                     </span>
                   </div>
-                  <span class="inventory-activity-list__status status-<?php echo sanitize((string)$movement['transfer_status']); ?>">
-                    <?php echo ucfirst((string)$movement['transfer_status']); ?>
-                  </span>
+                  <div class="inventory-activity-list__status">
+                    <?php echo ucfirst((string)($movement['transfer_status'] ?? 'signed')); ?> · <?php echo (int)$movement['amount']; ?> units
+                  </div>
                 </li>
               <?php endforeach; ?>
               <?php if (!$recentMovements): ?>
-                <li class="inventory-activity-list__item inventory-activity-list__item--empty">No recent movements.</li>
+                <li class="inventory-activity-list__item inventory-activity-list__item--empty">
+                  <span>No recent activity captured.</span>
+                </li>
               <?php endif; ?>
             </ul>
           </div>
@@ -779,10 +812,6 @@ include __DIR__ . '/includes/header.php';
 
       <section class="inventory-view" data-view="inventory">
         <div class="inventory-filter-bar">
-          <div class="inventory-filter-bar__search">
-            <input type="search" id="inventory-search" placeholder="Search items by name, SKU or location…" autocomplete="off">
-            <span class="inventory-filter-bar__search-icon" aria-hidden="true">🔍</span>
-          </div>
           <form method="get" class="inventory-filter-bar__filters" autocomplete="off">
             <label>
               <span>Sector</span>
@@ -798,13 +827,19 @@ include __DIR__ . '/includes/header.php';
             </label>
             <div class="inventory-filter-bar__actions">
               <?php if ($isRoot): ?>
-                <button class="btn primary" type="submit">Apply</button>
-                <a class="btn secondary" href="inventory.php">Reset</a>
+                <button class="button button--subtle" type="submit">Apply</button>
+                <a class="button button--ghost" href="inventory.php">Reset</a>
               <?php else: ?>
                 <span class="muted small">Filtering limited to your sector.</span>
               <?php endif; ?>
             </div>
           </form>
+          <?php if ($canManage): ?>
+            <div class="inventory-filter-bar__quick">
+              <button class="button button--ghost" type="button" data-modal-open="modal-bulk-add">Bulk add</button>
+              <button class="button button--ghost" type="button" data-modal-open="modal-bulk-move">Bulk movement</button>
+            </div>
+          <?php endif; ?>
         </div>
 
         <div class="inventory-table-wrapper">
@@ -841,15 +876,14 @@ include __DIR__ . '/includes/header.php';
                   <td><?php echo !empty($item['location']) ? sanitize((string)$item['location']) : '<em class="muted">—</em>'; ?></td>
                   <td class="actions-cell">
                     <div class="action-buttons">
-                      <button class="btn tiny secondary" data-modal-open="modal-history-<?php echo $itemId; ?>">History</button>
-                      <?php if ($canManage && ($isRoot || (int)$item['sector_id'] === (int)$userSectorId || $isRoot)): ?>
-                        <button class="btn tiny secondary" data-modal-open="modal-edit-<?php echo $itemId; ?>">Edit</button>
-                        <button class="btn tiny" data-modal-open="modal-move-<?php echo $itemId; ?>">Move</button>
+                      <button class="button button--subtle button--tiny" data-modal-open="modal-history-<?php echo $itemId; ?>">History</button>
+                      <?php if ($canManage && ($isRoot || (int)$item['sector_id'] === (int)$userSectorId)): ?>
+                        <button class="button button--subtle button--tiny" data-modal-open="modal-edit-<?php echo $itemId; ?>">Edit</button>
+                        <button class="button button--tiny" data-modal-open="modal-move-<?php echo $itemId; ?>">Move</button>
                       <?php endif; ?>
                     </div>
                   </td>
                 </tr>
-
               <?php endforeach; ?>
               <?php if ($items): ?>
                 <tr class="empty-row empty-row--search" hidden>
@@ -896,31 +930,21 @@ include __DIR__ . '/includes/header.php';
                   <tr>
                     <td><?php echo $movementId; ?></td>
                     <td><?php echo sanitize($itemName); ?></td>
-                    <td>
-                      <span class="chip <?php echo strtolower($direction) === 'out' ? 'chip-out' : 'chip-in'; ?>">
-                        <?php echo $direction; ?>
-                      </span>
-                    </td>
+                    <td><span class="chip <?php echo strtolower($direction) === 'out' ? 'chip-out' : 'chip-in'; ?>"><?php echo $direction; ?></span></td>
                     <td><?php echo (int)$movement['amount']; ?></td>
-                    <td>
-                      <?php echo $sectorFrom !== '' ? sanitize($sectorFrom) : '—'; ?> → <?php echo $sectorTo !== '' ? sanitize($sectorTo) : '—'; ?>
-                    </td>
-                    <td>
-                      <span class="tag status-<?php echo sanitize((string)$movement['transfer_status']); ?>"><?php echo ucfirst((string)$movement['transfer_status']); ?></span>
-                    </td>
+                    <td><?php echo $sectorFrom !== '' ? sanitize($sectorFrom) : '—'; ?> → <?php echo $sectorTo !== '' ? sanitize($sectorTo) : '—'; ?></td>
+                    <td><span class="tag status-<?php echo sanitize((string)$movement['transfer_status']); ?>"><?php echo ucfirst((string)$movement['transfer_status']); ?></span></td>
                     <td><?php echo sanitize(inventory_format_datetime($movement['ts'] ?? '')); ?></td>
                     <td>
                       <?php if ($attachments): ?>
                         <div class="movement-files">
                           <?php foreach ($attachments as $file): ?>
                             <?php $displayLabel = inventory_format_file_label($file, (array)$sectorOptions); ?>
-                            <a class="file-pill" href="<?php echo sanitize((string)$file['file_url']); ?>" target="_blank" rel="noopener">
-                              📎 <?php echo sanitize($displayLabel); ?>
-                            </a>
+                            <a class="file-pill" href="<?php echo sanitize((string)$file['file_url']); ?>" target="_blank" rel="noopener">📎 <?php echo sanitize($displayLabel); ?></a>
                           <?php endforeach; ?>
                         </div>
                       <?php else: ?>
-                        <span class="muted small">—</span>
+                        <span class="muted small">No attachments</span>
                       <?php endif; ?>
                     </td>
                   </tr>
@@ -947,15 +971,11 @@ include __DIR__ . '/includes/header.php';
             <article class="inventory-document-card">
               <div class="inventory-document-card__icon" aria-hidden="true">📄</div>
               <h3><?php echo sanitize($document['label']); ?></h3>
-              <p class="inventory-document-card__meta">
-                PDF · <?php echo sanitize(inventory_format_datetime($document['uploaded_at'] ?? '')); ?>
-              </p>
+              <p class="inventory-document-card__meta">PDF · <?php echo sanitize(inventory_format_datetime($document['uploaded_at'] ?? '')); ?></p>
               <p class="inventory-document-card__item">Movement #<?php echo (int)$document['movement_id']; ?> · <?php echo sanitize($itemName); ?></p>
               <div class="inventory-document-card__footer">
-                <span class="tag status-<?php echo sanitize((string)($movement['transfer_status'] ?? 'signed')); ?>">
-                  <?php echo ucfirst((string)($movement['transfer_status'] ?? 'signed')); ?>
-                </span>
-                <a class="btn tiny" href="<?php echo sanitize((string)$document['url']); ?>" target="_blank" rel="noopener">Open PDF</a>
+                <span class="tag status-<?php echo sanitize((string)($movement['transfer_status'] ?? 'signed')); ?>"><?php echo ucfirst((string)($movement['transfer_status'] ?? 'signed')); ?></span>
+                <a class="button button--tiny" href="<?php echo sanitize((string)$document['url']); ?>" target="_blank" rel="noopener">Open PDF</a>
               </div>
             </article>
           <?php endforeach; ?>
@@ -965,8 +985,9 @@ include __DIR__ . '/includes/header.php';
         </div>
       </section>
     </div>
-  </div>
+  </main>
 </div>
+
 <?php if ($canManage): ?>
   <div class="modal" id="modal-add" hidden>
     <div class="modal__dialog">
@@ -1312,184 +1333,305 @@ include __DIR__ . '/includes/header.php';
 <style>
 :root {
   color-scheme: only light;
-  --inventory-bg: #f9fafb;
-  --inventory-sidebar: #ffffff;
-  --inventory-surface: #ffffff;
-  --inventory-border: #e5e7eb;
-  --inventory-text: #111827;
-  --inventory-muted: #6b7280;
-  --inventory-accent: #2563eb;
-  --inventory-accent-soft: rgba(37, 99, 235, 0.12);
-  --inventory-radius: 14px;
-  --inventory-danger: #dc2626;
+  --workspace-bg: #f9fafb;
+  --workspace-sidebar: #ffffff;
+  --workspace-surface: #ffffff;
+  --workspace-border: #e5e7eb;
+  --workspace-text: #111827;
+  --workspace-muted: #6b7280;
+  --workspace-accent: #2563eb;
+  --workspace-accent-soft: rgba(37, 99, 235, 0.12);
+  --workspace-danger: #dc2626;
+  --workspace-radius: 12px;
 }
 body {
-  background: var(--inventory-bg);
-  color: var(--inventory-text);
+  background: var(--workspace-bg);
+  color: var(--workspace-text);
 }
 a {
   color: inherit;
   text-decoration: none;
 }
-.inventory-app {
+.inventory-shell {
   display: grid;
   grid-template-columns: 280px 1fr;
-  gap: 0;
-  min-height: calc(100vh - 140px);
+  min-height: calc(100vh - 120px);
   background: transparent;
-  border-radius: var(--inventory-radius);
+  border-radius: var(--workspace-radius);
   overflow: hidden;
-  box-shadow: 0 24px 48px -38px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 24px 48px -40px rgba(15, 23, 42, 0.35);
 }
-.inventory-app__sidebar {
-  background: var(--inventory-sidebar);
-  border-right: 1px solid var(--inventory-border);
+.inventory-sidebar {
+  background: var(--workspace-sidebar);
+  border-right: 1px solid var(--workspace-border);
+  padding: 28px 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 28px 22px;
+  gap: 28px;
 }
-.inventory-app__brand {
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.brand__title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand__title .icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--workspace-accent-soft);
+  color: var(--workspace-accent);
+}
+.brand__subtitle {
+  font-size: 0.9rem;
+  color: var(--workspace-muted);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--workspace-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  text-decoration: none;
+}
+.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+}
+.button:focus-visible {
+  outline: 2px solid var(--workspace-accent);
+  outline-offset: 2px;
+}
+.button--ghost {
+  background: transparent;
+  color: var(--workspace-accent);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: none;
+}
+.button--ghost:hover {
+  background: var(--workspace-accent-soft);
+}
+.button--subtle {
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--workspace-text);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: none;
+}
+.button--tiny {
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.button--full {
+  width: 100%;
+}
+.inventory-sidebar__card {
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
+  border-radius: var(--workspace-radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.inventory-sidebar__card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--workspace-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.inventory-sidebar__metrics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.inventory-sidebar__metrics li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  color: var(--workspace-text);
+}
+.inventory-sidebar__metrics .label {
+  color: var(--workspace-muted);
+  font-size: 0.85rem;
+}
+.inventory-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.inventory-sidebar__heading {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--workspace-muted);
+  font-weight: 600;
+}
+.inventory-sidebar__footer {
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--workspace-border);
+}
+.profile {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.inventory-app__brand-icon {
-  width: 44px;
-  height: 44px;
+.profile__avatar {
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  background: var(--inventory-accent-soft);
-  color: var(--inventory-accent);
+  background: var(--workspace-accent);
+  color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  letter-spacing: 0.08em;
 }
-.inventory-app__brand-meta {
+.profile__meta {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: 0.9rem;
-  color: var(--inventory-muted);
 }
-.inventory-app__brand-meta strong {
-  color: var(--inventory-text);
-  font-weight: 600;
-  font-size: 1rem;
+.profile__meta span {
+  color: var(--workspace-muted);
+  font-size: 0.8rem;
 }
-.inventory-app__nav {
+.inventory-main {
+  background: var(--workspace-bg);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 6px;
+  gap: 24px;
+  padding: 32px 40px;
 }
-.inventory-app__nav-item {
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: var(--inventory-radius);
-  padding: 12px 16px;
-  text-align: left;
+.inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+.inventory-header__title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.inventory-header__title h1 {
+  margin: 0;
+  font-size: 1.9rem;
+}
+.inventory-header__title span {
+  font-size: 0.95rem;
+  color: var(--workspace-muted);
+}
+.inventory-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.inventory-header__search {
+  position: relative;
+  width: 260px;
+}
+.inventory-header__search[hidden] {
+  display: none !important;
+}
+.inventory-header__search input {
+  width: 100%;
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  background: var(--workspace-surface);
+  color: var(--workspace-text);
+}
+.inventory-header__search input::placeholder {
+  color: var(--workspace-muted);
+}
+.inventory-header__buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.inventory-tabs {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.inventory-tab {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 0.95rem;
-  color: var(--inventory-text);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  min-width: 200px;
 }
-.inventory-app__nav-item:hover {
-  background: var(--inventory-accent-soft);
-  border-color: rgba(37, 99, 235, 0.18);
-  transform: translateX(2px);
-}
-.inventory-app__nav-item.is-active {
-  background: var(--inventory-accent);
-  color: #fff;
-  border-color: var(--inventory-accent);
-  box-shadow: 0 12px 26px -18px rgba(37, 99, 235, 0.45);
-}
-.inventory-app__nav-icon {
+.inventory-tab__icon {
   font-size: 1.25rem;
 }
-.inventory-app__sidebar-footer {
-  margin-top: auto;
-  border-top: 1px solid var(--inventory-border);
-  padding-top: 18px;
+.inventory-tab__body {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
 }
-.inventory-app__user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--inventory-accent);
+.inventory-tab__label {
+  font-weight: 600;
+}
+.inventory-tab__meta {
+  font-size: 0.8rem;
+  color: var(--workspace-muted);
+}
+.inventory-tab:hover {
+  border-color: rgba(37, 99, 235, 0.4);
+}
+.inventory-tab.is-active {
+  background: var(--workspace-accent);
   color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
+  border-color: var(--workspace-accent);
+  box-shadow: 0 14px 30px -20px rgba(37, 99, 235, 0.5);
 }
-.inventory-app__user-meta {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.85rem;
-  color: var(--inventory-muted);
+.inventory-tab.is-active .inventory-tab__meta {
+  color: rgba(255, 255, 255, 0.85);
 }
-.inventory-app__user-meta strong {
-  color: var(--inventory-text);
-  font-weight: 600;
+.inventory-main__messages {
+  min-height: 24px;
 }
-.inventory-app__main {
-  background: var(--inventory-bg);
-  display: flex;
-  flex-direction: column;
-}
-.inventory-app__header {
-  padding: 28px 32px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  background: var(--inventory-surface);
-  border-bottom: 1px solid var(--inventory-border);
-}
-.inventory-app__header h1 {
-  margin: 0;
-  font-size: 1.8rem;
-}
-.inventory-app__header p {
-  margin: 6px 0 0;
-  color: var(--inventory-muted);
-  font-size: 0.95rem;
-}
-.inventory-app__header-actions {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.btn-ghost {
-  background: transparent;
-  border: 1px solid var(--inventory-border);
-  color: var(--inventory-text);
-  padding: 10px 18px;
-  border-radius: var(--inventory-radius);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.btn-ghost:hover {
-  background: rgba(15, 23, 42, 0.04);
-}
-.inventory-app__alerts {
-  padding: 0 32px;
-}
-.inventory-app__content {
-  flex: 1;
-  padding: 32px 32px 40px;
-  overflow-y: auto;
+.inventory-main__body {
   display: flex;
   flex-direction: column;
   gap: 32px;
@@ -1501,12 +1643,13 @@ a {
   display: block;
 }
 .inventory-dashboard {
-  display: grid;
-  gap: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 .inventory-dashboard__stats {
   display: grid;
-  gap: 16px;
+  gap: 18px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 .stat-card {
@@ -1514,10 +1657,9 @@ a {
   align-items: center;
   gap: 16px;
   padding: 18px 20px;
-  border-radius: var(--inventory-radius);
-  background: var(--inventory-surface);
-  border: 1px solid var(--inventory-border);
-  box-shadow: none;
+  border-radius: 14px;
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
 }
 .stat-card__icon {
   width: 44px;
@@ -1527,8 +1669,8 @@ a {
   align-items: center;
   justify-content: center;
   font-size: 1.3rem;
-  color: var(--inventory-accent);
-  background: var(--inventory-accent-soft);
+  background: var(--workspace-accent-soft);
+  color: var(--workspace-accent);
 }
 .stat-card__meta {
   display: flex;
@@ -1537,17 +1679,17 @@ a {
 }
 .stat-card__label {
   font-size: 0.75rem;
-  color: var(--inventory-muted);
-  text-transform: uppercase;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--workspace-muted);
 }
 .stat-card__value {
-  font-size: 1.55rem;
-  color: var(--inventory-text);
+  font-size: 1.6rem;
   font-weight: 600;
+  color: var(--workspace-text);
 }
 .stat-card--success .stat-card__icon {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(34, 197, 94, 0.18);
   color: #15803d;
 }
 .stat-card--warning .stat-card__icon {
@@ -1559,22 +1701,24 @@ a {
   color: #0369a1;
 }
 .inventory-dashboard__activity {
-  background: var(--inventory-surface);
-  border-radius: var(--inventory-radius);
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
+  border-radius: 14px;
   padding: 24px;
-  border: 1px solid var(--inventory-border);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 .inventory-dashboard__section-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
-  color: var(--inventory-muted);
+  align-items: center;
+  color: var(--workspace-muted);
 }
 .inventory-dashboard__section-header h2 {
   margin: 0;
-  color: var(--inventory-text);
-  font-size: 1.15rem;
+  font-size: 1.2rem;
+  color: var(--workspace-text);
 }
 .inventory-activity-list {
   list-style: none;
@@ -1588,15 +1732,16 @@ a {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 16px;
-  padding: 14px 16px;
-  border-radius: var(--inventory-radius);
-  border: 1px solid var(--inventory-border);
-  background: rgba(15, 23, 42, 0.02);
   align-items: center;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--workspace-border);
+  background: rgba(15, 23, 42, 0.02);
 }
 .inventory-activity-list__item--empty {
+  justify-content: center;
   text-align: center;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
   font-style: italic;
 }
 .inventory-activity-list__badge {
@@ -1604,8 +1749,8 @@ a {
   font-weight: 700;
   padding: 6px 12px;
   border-radius: 999px;
-  text-align: center;
   min-width: 56px;
+  text-align: center;
 }
 .inventory-activity-list__badge--in {
   background: #dcfce7;
@@ -1622,45 +1767,19 @@ a {
 }
 .inventory-activity-list__details {
   font-size: 0.85rem;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
 }
 .inventory-activity-list__status {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
 }
 .inventory-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
+  justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 20px;
-}
-.inventory-filter-bar__search {
-  position: relative;
-  flex: 1;
-  min-width: 220px;
-}
-.inventory-filter-bar__search input {
-  width: 100%;
-  padding: 12px 16px 12px 46px;
-  border-radius: var(--inventory-radius);
-  border: 1px solid var(--inventory-border);
-  background: var(--inventory-surface);
-  color: var(--inventory-text);
-}
-.inventory-filter-bar__search input:focus {
-  outline: 2px solid rgba(37, 99, 235, 0.28);
-  outline-offset: 1px;
-}
-.inventory-filter-bar__search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  font-size: 0.95rem;
-  color: var(--inventory-muted);
 }
 .inventory-filter-bar__filters {
   display: flex;
@@ -1672,25 +1791,30 @@ a {
   flex-direction: column;
   gap: 6px;
   font-size: 0.85rem;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
 }
 .inventory-filter-bar__filters select {
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
   padding: 10px 14px;
-  border-radius: var(--inventory-radius);
-  border: 1px solid var(--inventory-border);
-  background: var(--inventory-surface);
-  color: var(--inventory-text);
+  background: var(--workspace-surface);
+  color: var(--workspace-text);
 }
 .inventory-filter-bar__actions {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
+}
+.inventory-filter-bar__quick {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .inventory-table-wrapper {
-  background: var(--inventory-surface);
-  border-radius: var(--inventory-radius);
-  border: 1px solid var(--inventory-border);
+  border: 1px solid var(--workspace-border);
+  border-radius: 14px;
   overflow: hidden;
+  background: var(--workspace-surface);
 }
 .inventory-table {
   width: 100%;
@@ -1699,68 +1823,66 @@ a {
 .inventory-table th,
 .inventory-table td {
   padding: 16px 20px;
+  border-bottom: 1px solid var(--workspace-border);
   text-align: left;
-  border-bottom: 1px solid var(--inventory-border);
 }
 .inventory-table thead th {
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
   background: rgba(15, 23, 42, 0.03);
 }
 .inventory-table tbody tr:hover {
   background: rgba(37, 99, 235, 0.06);
 }
-.inventory-table--compact td,
-.inventory-table--compact th {
+.inventory-table--compact th,
+.inventory-table--compact td {
   padding: 14px 16px;
 }
 .col-qty {
   width: 90px;
 }
 .col-actions {
-  width: 220px;
+  width: 180px;
 }
 .item-heading {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.muted {
-  color: var(--inventory-muted);
-  font-size: 0.85rem;
-}
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  background: rgba(15, 23, 42, 0.06);
-}
-.badge-muted {
-  background: rgba(148, 163, 184, 0.18);
-  color: var(--inventory-muted);
-}
 .qty-cell {
   font-weight: 600;
+}
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .actions-cell {
   text-align: right;
 }
-.action-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--workspace-muted);
 }
-.empty-row,
-.empty-row--search {
-  text-align: center;
-  color: var(--inventory-muted);
-  font-style: italic;
+.badge-muted {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--workspace-muted);
+}
+.muted {
+  color: var(--workspace-muted);
+  font-size: 0.85rem;
+}
+.small {
+  font-size: 0.75rem;
 }
 .chip {
   display: inline-flex;
@@ -1768,13 +1890,14 @@ a {
   justify-content: center;
   padding: 4px 10px;
   border-radius: 999px;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--workspace-text);
 }
 .chip-in {
   background: #dcfce7;
-  color: #166534;
+  color: #15803d;
 }
 .chip-out {
   background: #fee2e2;
@@ -1783,58 +1906,43 @@ a {
 .tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.05);
   font-size: 0.75rem;
-  color: var(--inventory-muted);
+  font-weight: 600;
+  text-transform: capitalize;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--workspace-muted);
 }
-.tag-link {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--inventory-accent);
-}
-.status-pending {
-  background: rgba(250, 204, 21, 0.2);
-  color: #92400e;
-}
-.status-signed,
-.status-completed {
-  background: rgba(34, 197, 94, 0.2);
+.tag.status-signed,
+.tag.status-approved,
+.tag.status-completed {
+  background: #dcfce7;
   color: #166534;
 }
-.status-cancelled {
-  background: rgba(248, 113, 113, 0.2);
+.tag.status-pending,
+.tag.status-in_transit,
+.tag.status-in-transit {
+  background: #fef3c7;
+  color: #b45309;
+}
+.tag.status-cancelled,
+.tag.status-rejected,
+.tag.status-archived {
+  background: #fee2e2;
   color: #b91c1c;
-}
-.movement-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-.file-pill {
-  padding: 6px 10px;
-  border-radius: var(--inventory-radius);
-  background: rgba(37, 99, 235, 0.08);
-  font-size: 0.78rem;
-  color: var(--inventory-accent);
-}
-.inventory-transfers {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
 }
 .inventory-documents {
   display: grid;
+  gap: 18px;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
 }
 .inventory-document-card {
-  background: var(--inventory-surface);
-  border: 1px solid var(--inventory-border);
-  border-radius: var(--inventory-radius);
-  padding: 20px;
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
+  border-radius: 14px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1842,35 +1950,64 @@ a {
 }
 .inventory-document-card:hover {
   transform: translateY(-2px);
-  border-color: var(--inventory-accent);
+  border-color: var(--workspace-accent);
 }
 .inventory-document-card__icon {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
-  background: var(--inventory-accent-soft);
-  display: inline-flex;
+  background: var(--workspace-accent-soft);
+  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4rem;
+  font-size: 1.6rem;
 }
-.inventory-document-card__meta,
-.inventory-document-card__item {
+.inventory-document-card__meta {
   font-size: 0.85rem;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
+}
+.inventory-document-card__item {
+  font-size: 0.9rem;
+  color: var(--workspace-text);
 }
 .inventory-document-card__footer {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 .inventory-documents__empty {
-  padding: 40px;
+  border: 1px dashed var(--workspace-border);
+  border-radius: 14px;
+  padding: 24px;
   text-align: center;
-  color: var(--inventory-muted);
-  border: 1px dashed var(--inventory-border);
-  border-radius: var(--inventory-radius);
+  color: var(--workspace-muted);
   background: rgba(15, 23, 42, 0.02);
+}
+.movement-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.file-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--workspace-accent);
+  font-size: 0.8rem;
+}
+.flash {
+  margin-bottom: 0;
+}
+.flash-error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  padding: 12px 16px;
+  border-radius: 12px;
 }
 .modal {
   position: fixed;
@@ -1879,38 +2016,38 @@ a {
   display: grid;
   place-items: center;
   padding: 1.5rem;
-  z-index: 50;
+  z-index: 60;
 }
 .modal[hidden] {
   display: none;
 }
 .modal__dialog {
-  background: var(--inventory-surface);
-  border-radius: var(--inventory-radius);
-  box-shadow: 0 24px 48px -32px rgba(15, 23, 42, 0.4);
+  background: var(--workspace-surface);
+  border-radius: 16px;
+  box-shadow: 0 30px 60px -35px rgba(15, 23, 42, 0.5);
   min-width: min(520px, 100%);
-  max-width: 820px;
+  max-width: 880px;
 }
 .modal__dialog--wide {
   max-width: 960px;
 }
 .modal__header {
-  padding: 1.25rem 1.5rem 1rem;
-  border-bottom: 1px solid var(--inventory-border);
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   gap: 1rem;
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--workspace-border);
 }
 .modal__header h3 {
   margin: 0;
 }
 .modal__close {
-  background: none;
   border: none;
+  background: transparent;
   font-size: 1.5rem;
   cursor: pointer;
-  color: var(--inventory-muted);
+  color: var(--workspace-muted);
 }
 .modal__body {
   padding: 1.25rem 1.5rem;
@@ -1923,70 +2060,26 @@ a {
 .modal__body label {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-size: 0.85rem;
-  color: var(--inventory-text);
+  color: var(--workspace-text);
 }
 .modal__body input,
 .modal__body select,
 .modal__body textarea {
-  border: 1px solid var(--inventory-border);
-  border-radius: var(--inventory-radius);
-  padding: 0.6rem 0.75rem;
-  font-size: 0.9rem;
-  background: var(--inventory-surface);
-  color: var(--inventory-text);
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.95rem;
+  background: var(--workspace-surface);
+  color: var(--workspace-text);
 }
 .modal__footer {
   padding: 1rem 1.5rem;
-  border-top: 1px solid var(--inventory-border);
+  border-top: 1px solid var(--workspace-border);
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-}
-.movement-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-.movement-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.movement-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-.movement-list li {
-  border: 1px solid var(--inventory-border);
-  border-radius: var(--inventory-radius);
-  padding: 1rem;
-  background: rgba(15, 23, 42, 0.02);
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-.movement-main {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.movement-main strong {
-  font-size: 1.05rem;
-  color: var(--inventory-text);
-}
-.movement-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.movement-wrapper .btn.tiny {
-  align-self: flex-start;
 }
 .bulk-grid {
   display: flex;
@@ -1998,65 +2091,123 @@ a {
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   padding: 1rem;
-  border: 1px dashed var(--inventory-border);
-  border-radius: var(--inventory-radius);
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
   background: rgba(15, 23, 42, 0.02);
 }
-.checkbox {
+.movement-wrapper {
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 1rem;
 }
-@media (max-width: 1080px) {
-  .inventory-app {
-    grid-template-columns: 1fr;
-    min-height: auto;
+.movement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.movement-list li {
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.movement-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.movement-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: var(--workspace-accent);
+  color: #fff;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  text-decoration: none;
+}
+.btn.primary {
+  background: var(--workspace-accent);
+  border-color: var(--workspace-accent);
+}
+.btn.secondary {
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--workspace-text);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+.btn.tiny {
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.btn.primary:hover,
+.btn.secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+.empty-row,
+.empty-row--search {
+  text-align: center;
+  color: var(--workspace-muted);
+  font-style: italic;
+}
+@media (max-width: 1100px) {
+  .inventory-shell {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .inventory-app__sidebar {
+  .inventory-sidebar {
     border-right: none;
-    border-bottom: 1px solid var(--inventory-border);
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 18px;
-  }
-  .inventory-app__nav {
+    border-bottom: 1px solid var(--workspace-border);
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 8px;
+    justify-content: space-between;
+    padding: 24px 20px;
   }
-  .inventory-app__nav-item {
-    flex: 1 1 calc(50% - 8px);
+  .inventory-sidebar__section,
+  .inventory-sidebar__card {
+    flex: 1 1 240px;
   }
-  .inventory-app__sidebar-footer {
-    display: none;
+  .inventory-sidebar__footer {
+    border-top: none;
+    padding-top: 0;
   }
 }
-@media (max-width: 768px) {
-  .inventory-app__header {
+@media (max-width: 900px) {
+  .inventory-main {
+    padding: 28px 24px;
+  }
+  .inventory-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
   }
-  .inventory-app__header-actions {
+  .inventory-header__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .inventory-header__search {
+    width: 100%;
+  }
+  .inventory-header__buttons {
     width: 100%;
     justify-content: flex-start;
-  }
-  .inventory-app__content {
-    padding: 24px;
-  }
-  .inventory-filter-bar__filters {
-    flex-wrap: wrap;
-  }
-  .inventory-filter-bar__actions {
-    width: 100%;
-  }
-}
-@media (max-width: 640px) {
-  .inventory-app__nav-item {
-    flex: 1 1 100%;
-  }
-  .inventory-table {
-    min-width: 100%;
   }
   .actions-cell {
     text-align: left;
@@ -2064,11 +2215,23 @@ a {
   .action-buttons {
     justify-content: flex-start;
   }
+}
+@media (max-width: 640px) {
+  .inventory-tabs {
+    flex-direction: column;
+  }
+  .inventory-tab {
+    width: 100%;
+  }
+  .inventory-table {
+    min-width: 100%;
+  }
   .modal__dialog {
     min-width: 100%;
   }
 }
 </style>
+
 
 <script>
 (function(){
@@ -2125,13 +2288,14 @@ a {
     });
   });
 
-  const app = document.querySelector('.inventory-app');
-  if (app) {
-    const viewButtons = app.querySelectorAll('[data-view-target]');
-    const views = app.querySelectorAll('[data-view]');
+  const shell = document.querySelector('.inventory-shell');
+  if (shell) {
+    const viewButtons = shell.querySelectorAll('[data-view-target]');
+    const views = shell.querySelectorAll('[data-view]');
     const titleEl = document.getElementById('inventory-view-title');
     const subtitleEl = document.getElementById('inventory-view-subtitle');
     const primaryAction = document.getElementById('inventory-primary-action');
+    const searchContainer = shell.querySelector('[data-inventory-search]');
     const searchInput = document.getElementById('inventory-search');
     const searchRows = Array.from(document.querySelectorAll('[data-item-row]'));
     const emptySearchRow = document.querySelector('.empty-row--search');
@@ -2160,12 +2324,21 @@ a {
       applySearch();
     }
 
+    const toggleSearch = (isInventory) => {
+      if (searchContainer) {
+        searchContainer.hidden = !isInventory;
+      }
+      if (!isInventory && searchInput) {
+        searchInput.blur();
+      }
+    };
+
     const activateView = (targetId) => {
       viewButtons.forEach(btn => {
         const isMatch = btn.getAttribute('data-view-target') === targetId;
         btn.classList.toggle('is-active', isMatch);
         if (isMatch && titleEl && subtitleEl) {
-          const labelSpan = btn.querySelector('span:last-child');
+          const labelSpan = btn.querySelector('.inventory-tab__label') || btn.querySelector('span:last-child');
           titleEl.textContent = labelSpan ? labelSpan.textContent.trim() : btn.textContent.trim();
           subtitleEl.textContent = btn.getAttribute('data-subtitle') || '';
         }
@@ -2192,6 +2365,7 @@ a {
         primaryAction.blur();
       }
 
+      toggleSearch(targetId === 'inventory');
       if (targetId === 'inventory' && searchInput) {
         applySearch();
       }
@@ -2206,7 +2380,7 @@ a {
       });
     });
 
-    const initialButton = app.querySelector('[data-view-target].is-active');
+    const initialButton = shell.querySelector('[data-view-target].is-active');
     if (initialButton) {
       activateView(initialButton.getAttribute('data-view-target'));
     } else {
