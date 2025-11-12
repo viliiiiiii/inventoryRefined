@@ -484,6 +484,48 @@ function inventory_format_datetime(?string $ts): string
     return date('M j, Y g:i A', $time);
 }
 
+function inventory_string_ends_with(string $haystack, string $needle): bool
+{
+    if ($needle === '') {
+        return true;
+    }
+    $needleLength = strlen($needle);
+    if ($needleLength === 0 || $needleLength > strlen($haystack)) {
+        return false;
+    }
+    return substr($haystack, -$needleLength) === $needle;
+}
+
+function inventory_file_is_pdf(array $file): bool
+{
+    $mime = strtolower((string)($file['mime'] ?? ''));
+    if ($mime !== '' && strpos($mime, 'pdf') !== false) {
+        return true;
+    }
+
+    $candidates = [];
+    $url = (string)($file['file_url'] ?? '');
+    if ($url !== '') {
+        $path = (string)parse_url($url, PHP_URL_PATH);
+        if ($path !== '') {
+            $candidates[] = strtolower($path);
+        }
+    }
+
+    $key = (string)($file['file_key'] ?? '');
+    if ($key !== '') {
+        $candidates[] = strtolower($key);
+    }
+
+    foreach ($candidates as $candidate) {
+        if (inventory_string_ends_with($candidate, '.pdf')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 $itemsById = [];
 $totalQuantity = 0;
 $unassignedItems = 0;
@@ -518,6 +560,12 @@ $recentMovements  = array_slice($allMovements, 0, 5);
 $documentsList = [];
 foreach ($movementFiles as $movementId => $files) {
     foreach ($files as $fileRow) {
+        if (($fileRow['kind'] ?? '') === 'signature') {
+            continue;
+        }
+        if (!inventory_file_is_pdf((array)$fileRow)) {
+            continue;
+        }
         $movementRow = $movementsById[(int)$movementId] ?? null;
         $itemRow = $movementRow['item'] ?? null;
         $documentsList[] = [
@@ -792,82 +840,16 @@ include __DIR__ . '/includes/header.php';
                   </td>
                   <td><?php echo !empty($item['location']) ? sanitize((string)$item['location']) : '<em class="muted">—</em>'; ?></td>
                   <td class="actions-cell">
-                    <?php if ($canManage && ($isRoot || (int)$item['sector_id'] === (int)$userSectorId || $isRoot)): ?>
-                      <div class="action-buttons">
+                    <div class="action-buttons">
+                      <button class="btn tiny secondary" data-modal-open="modal-history-<?php echo $itemId; ?>">History</button>
+                      <?php if ($canManage && ($isRoot || (int)$item['sector_id'] === (int)$userSectorId || $isRoot)): ?>
                         <button class="btn tiny secondary" data-modal-open="modal-edit-<?php echo $itemId; ?>">Edit</button>
                         <button class="btn tiny" data-modal-open="modal-move-<?php echo $itemId; ?>">Move</button>
-                      </div>
-                    <?php else: ?>
-                      <span class="muted small">—</span>
-                    <?php endif; ?>
-                  </td>
-                </tr>
-                <tr class="movement-row" data-movement-row-for="<?php echo $itemId; ?>">
-                  <td colspan="5">
-                    <div class="movement-wrapper">
-                      <div class="movement-header">
-                        <h4>Movements</h4>
-                      </div>
-                      <ul class="movement-list">
-                        <?php foreach ($movementsByItem[$itemId] ?? [] as $movement): ?>
-                          <?php
-                            $movementId = (int)$movement['id'];
-                            $direction  = $movement['direction'] === 'out' ? 'out' : 'in';
-                            $chipClass  = $direction === 'out' ? 'chip-out' : 'chip-in';
-                            $sectorFrom = $movement['source_sector_id'] !== null ? inventory_sector_name((array)$sectorOptions, $movement['source_sector_id']) : '';
-                            $sectorTo   = $movement['target_sector_id'] !== null ? inventory_sector_name((array)$sectorOptions, $movement['target_sector_id']) : '';
-                            $attachments = $movementFiles[$movementId] ?? [];
-                            $tokens = $movementTokens[$movementId] ?? [];
-                          ?>
-                          <li>
-                            <div class="movement-main">
-                              <span class="chip <?php echo $chipClass; ?>"><?php echo strtoupper($direction); ?></span>
-                              <strong><?php echo (int)$movement['amount']; ?></strong>
-                              <span class="muted small"><?php echo sanitize((string)$movement['ts']); ?></span>
-                            </div>
-                            <div class="movement-meta">
-                              <?php if (!empty($movement['reason'])): ?>
-                                <span class="tag">Reason: <?php echo sanitize((string)$movement['reason']); ?></span>
-                              <?php endif; ?>
-                              <?php if (!empty($movement['notes'])): ?>
-                                <span class="tag">Notes: <?php echo sanitize((string)$movement['notes']); ?></span>
-                              <?php endif; ?>
-                              <?php if ($sectorFrom !== '' || $sectorTo !== ''): ?>
-                                <span class="tag">Route: <?php echo $sectorFrom !== '' ? sanitize($sectorFrom) : '—'; ?> → <?php echo $sectorTo !== '' ? sanitize($sectorTo) : '—'; ?></span>
-                              <?php endif; ?>
-                              <?php if (!empty($movement['transfer_form_url'])): ?>
-                                <a class="tag tag-link" href="<?php echo sanitize((string)$movement['transfer_form_url']); ?>" target="_blank" rel="noopener">
-                                  <span aria-hidden="true">📄</span> Transfer PDF
-                                </a>
-                              <?php endif; ?>
-                              <?php if ($tokens): ?>
-                                <?php $tokenRow = end($tokens); ?>
-                                <span class="tag">QR expires <?php echo sanitize((string)$tokenRow['expires_at']); ?></span>
-                              <?php endif; ?>
-                              <span class="tag status-<?php echo sanitize((string)$movement['transfer_status']); ?>">Status: <?php echo ucfirst((string)$movement['transfer_status']); ?></span>
-                            </div>
-                            <?php if ($attachments): ?>
-                              <div class="movement-files">
-                                <?php foreach ($attachments as $file): ?>
-                                  <?php $displayLabel = inventory_format_file_label($file, (array)$sectorOptions); ?>
-                                  <a class="file-pill" href="<?php echo sanitize((string)$file['file_url']); ?>" target="_blank" rel="noopener">
-                                    📎 <?php echo sanitize($displayLabel); ?>
-                                  </a>
-                                <?php endforeach; ?>
-                              </div>
-                            <?php endif; ?>
-                            <?php if ($canManage): ?>
-                              <button class="btn tiny" data-modal-open="modal-upload-<?php echo $movementId; ?>">Upload Paper Trail</button>
-                            <?php endif; ?>
-                          </li>
-                        <?php endforeach; ?>
-                        <?php if (empty($movementsByItem[$itemId])): ?>
-                          <li class="muted small">No movements yet.</li>
-                        <?php endif; ?>
-                      </ul>
+                      <?php endif; ?>
                     </div>
                   </td>
                 </tr>
+
               <?php endforeach; ?>
               <?php if ($items): ?>
                 <tr class="empty-row empty-row--search" hidden>
@@ -966,14 +948,14 @@ include __DIR__ . '/includes/header.php';
               <div class="inventory-document-card__icon" aria-hidden="true">📄</div>
               <h3><?php echo sanitize($document['label']); ?></h3>
               <p class="inventory-document-card__meta">
-                <?php echo sanitize(ucfirst((string)$document['kind'])); ?> · <?php echo sanitize(inventory_format_datetime($document['uploaded_at'] ?? '')); ?>
+                PDF · <?php echo sanitize(inventory_format_datetime($document['uploaded_at'] ?? '')); ?>
               </p>
               <p class="inventory-document-card__item">Movement #<?php echo (int)$document['movement_id']; ?> · <?php echo sanitize($itemName); ?></p>
               <div class="inventory-document-card__footer">
                 <span class="tag status-<?php echo sanitize((string)($movement['transfer_status'] ?? 'signed')); ?>">
                   <?php echo ucfirst((string)($movement['transfer_status'] ?? 'signed')); ?>
                 </span>
-                <a class="btn tiny" href="<?php echo sanitize((string)$document['url']); ?>" target="_blank" rel="noopener">Open</a>
+                <a class="btn tiny" href="<?php echo sanitize((string)$document['url']); ?>" target="_blank" rel="noopener">Open PDF</a>
               </div>
             </article>
           <?php endforeach; ?>
@@ -1130,6 +1112,81 @@ include __DIR__ . '/includes/header.php';
   </div>
 
   <?php foreach ($items as $item): ?>
+    <div class="modal" id="modal-history-<?php echo (int)$item['id']; ?>" hidden>
+      <div class="modal__dialog modal__dialog--wide">
+        <header class="modal__header">
+          <h3>History for <?php echo sanitize((string)$item['name']); ?></h3>
+          <button class="modal__close" data-modal-close>&times;</button>
+        </header>
+        <div class="modal__body modal__body--history">
+          <div class="movement-wrapper">
+            <div class="movement-header">
+              <h4>Movement Log</h4>
+            </div>
+            <ul class="movement-list">
+              <?php
+                $historyList = $movementsByItem[(int)$item['id']] ?? [];
+              ?>
+              <?php foreach ($historyList as $movement): ?>
+                <?php
+                  $movementId = (int)$movement['id'];
+                  $direction  = ($movement['direction'] ?? 'in') === 'out' ? 'out' : 'in';
+                  $chipClass  = $direction === 'out' ? 'chip-out' : 'chip-in';
+                  $sectorFrom = $movement['source_sector_id'] !== null ? inventory_sector_name((array)$sectorOptions, $movement['source_sector_id']) : '';
+                  $sectorTo   = $movement['target_sector_id'] !== null ? inventory_sector_name((array)$sectorOptions, $movement['target_sector_id']) : '';
+                  $attachments = $movementFiles[$movementId] ?? [];
+                  $tokens = $movementTokens[$movementId] ?? [];
+                ?>
+                <li>
+                  <div class="movement-main">
+                    <span class="chip <?php echo $chipClass; ?>"><?php echo strtoupper($direction); ?></span>
+                    <strong><?php echo (int)$movement['amount']; ?></strong>
+                    <span class="muted small"><?php echo sanitize((string)$movement['ts']); ?></span>
+                  </div>
+                  <div class="movement-meta">
+                    <?php if (!empty($movement['reason'])): ?>
+                      <span class="tag">Reason: <?php echo sanitize((string)$movement['reason']); ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($movement['notes'])): ?>
+                      <span class="tag">Notes: <?php echo sanitize((string)$movement['notes']); ?></span>
+                    <?php endif; ?>
+                    <?php if ($sectorFrom !== '' || $sectorTo !== ''): ?>
+                      <span class="tag">Route: <?php echo $sectorFrom !== '' ? sanitize($sectorFrom) : '—'; ?> → <?php echo $sectorTo !== '' ? sanitize($sectorTo) : '—'; ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($movement['transfer_form_url'])): ?>
+                      <a class="tag tag-link" href="<?php echo sanitize((string)$movement['transfer_form_url']); ?>" target="_blank" rel="noopener">
+                        <span aria-hidden="true">📄</span> Transfer PDF
+                      </a>
+                    <?php endif; ?>
+                    <?php if ($tokens): ?>
+                      <?php $tokenRow = end($tokens); ?>
+                      <span class="tag">QR expires <?php echo sanitize((string)$tokenRow['expires_at']); ?></span>
+                    <?php endif; ?>
+                    <span class="tag status-<?php echo sanitize((string)$movement['transfer_status']); ?>">Status: <?php echo ucfirst((string)$movement['transfer_status']); ?></span>
+                  </div>
+                  <?php if ($attachments): ?>
+                    <div class="movement-files">
+                      <?php foreach ($attachments as $file): ?>
+                        <?php $displayLabel = inventory_format_file_label($file, (array)$sectorOptions); ?>
+                        <a class="file-pill" href="<?php echo sanitize((string)$file['file_url']); ?>" target="_blank" rel="noopener">
+                          📎 <?php echo sanitize($displayLabel); ?>
+                        </a>
+                      <?php endforeach; ?>
+                    </div>
+                  <?php endif; ?>
+                  <?php if ($canManage): ?>
+                    <button class="btn tiny" data-modal-open="modal-upload-<?php echo $movementId; ?>">Upload Paper Trail</button>
+                  <?php endif; ?>
+                </li>
+              <?php endforeach; ?>
+              <?php if (empty($historyList)): ?>
+                <li class="muted small">No movements yet.</li>
+              <?php endif; ?>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="modal" id="modal-edit-<?php echo (int)$item['id']; ?>" hidden>
       <div class="modal__dialog">
         <header class="modal__header">
@@ -1253,311 +1310,295 @@ include __DIR__ . '/includes/header.php';
   <?php endforeach; ?>
 <?php endif; ?>
 <style>
-.inventory-app {
-  display: flex;
-  gap: 0;
-  background: #f5f7fb;
-  border-radius: 18px;
-  overflow: hidden;
-  min-height: 720px;
-  box-shadow: 0 30px 60px -45px rgba(15, 23, 42, 0.35);
+:root {
+  color-scheme: only light;
+  --inventory-bg: #f9fafb;
+  --inventory-sidebar: #ffffff;
+  --inventory-surface: #ffffff;
+  --inventory-border: #e5e7eb;
+  --inventory-text: #111827;
+  --inventory-muted: #6b7280;
+  --inventory-accent: #2563eb;
+  --inventory-accent-soft: rgba(37, 99, 235, 0.12);
+  --inventory-radius: 14px;
+  --inventory-danger: #dc2626;
 }
-
+body {
+  background: var(--inventory-bg);
+  color: var(--inventory-text);
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+.inventory-app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 0;
+  min-height: calc(100vh - 140px);
+  background: transparent;
+  border-radius: var(--inventory-radius);
+  overflow: hidden;
+  box-shadow: 0 24px 48px -38px rgba(15, 23, 42, 0.18);
+}
 .inventory-app__sidebar {
-  width: 260px;
-  background: #ffffff;
+  background: var(--inventory-sidebar);
+  border-right: 1px solid var(--inventory-border);
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #e2e8f0;
+  gap: 24px;
+  padding: 28px 22px;
 }
-
 .inventory-app__brand {
-  padding: 24px 20px;
-  border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .inventory-app__brand-icon {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  display: flex;
+  background: var(--inventory-accent-soft);
+  color: var(--inventory-accent);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
 }
-
 .inventory-app__brand-meta {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 0.85rem;
-  color: #475569;
+  font-size: 0.9rem;
+  color: var(--inventory-muted);
 }
-
 .inventory-app__brand-meta strong {
-  color: #0f172a;
+  color: var(--inventory-text);
+  font-weight: 600;
   font-size: 1rem;
 }
-
 .inventory-app__nav {
-  padding: 18px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   overflow-y: auto;
+  padding-right: 6px;
 }
-
 .inventory-app__nav-item {
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  border-radius: 10px;
+  border-radius: var(--inventory-radius);
   padding: 12px 16px;
   text-align: left;
   display: flex;
   align-items: center;
   gap: 12px;
   font-size: 0.95rem;
-  color: #334155;
+  color: var(--inventory-text);
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-
 .inventory-app__nav-item:hover {
-  background: #edf2ff;
+  background: var(--inventory-accent-soft);
+  border-color: rgba(37, 99, 235, 0.18);
   transform: translateX(2px);
 }
-
 .inventory-app__nav-item.is-active {
-  background: #2563eb;
+  background: var(--inventory-accent);
   color: #fff;
-  box-shadow: 0 14px 28px -20px rgba(37, 99, 235, 0.9);
+  border-color: var(--inventory-accent);
+  box-shadow: 0 12px 26px -18px rgba(37, 99, 235, 0.45);
 }
-
 .inventory-app__nav-icon {
-  font-size: 1.3rem;
+  font-size: 1.25rem;
 }
-
 .inventory-app__sidebar-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #e2e8f0;
+  margin-top: auto;
+  border-top: 1px solid var(--inventory-border);
+  padding-top: 18px;
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .inventory-app__user-avatar {
   width: 40px;
   height: 40px;
-  border-radius: 999px;
-  background: #2563eb;
+  border-radius: 50%;
+  background: var(--inventory-accent);
   color: #fff;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
 }
-
 .inventory-app__user-meta {
   display: flex;
   flex-direction: column;
   font-size: 0.85rem;
-  color: #475569;
+  color: var(--inventory-muted);
 }
-
 .inventory-app__user-meta strong {
-  color: #0f172a;
+  color: var(--inventory-text);
+  font-weight: 600;
 }
-
 .inventory-app__main {
-  flex: 1;
+  background: var(--inventory-bg);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(145deg, #f8fafc, #eef2ff);
 }
-
 .inventory-app__header {
   padding: 28px 32px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  gap: 16px;
+  background: var(--inventory-surface);
+  border-bottom: 1px solid var(--inventory-border);
 }
-
 .inventory-app__header h1 {
   margin: 0;
-  font-size: 1.9rem;
-  color: #0f172a;
+  font-size: 1.8rem;
 }
-
 .inventory-app__header p {
   margin: 6px 0 0;
-  color: #64748b;
+  color: var(--inventory-muted);
   font-size: 0.95rem;
 }
-
 .inventory-app__header-actions {
   display: flex;
   gap: 12px;
   align-items: center;
 }
-
 .btn-ghost {
   background: transparent;
-  border: 1px solid #cbd5e1;
-  color: #0f172a;
+  border: 1px solid var(--inventory-border);
+  color: var(--inventory-text);
   padding: 10px 18px;
-  border-radius: 10px;
+  border-radius: var(--inventory-radius);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.15s ease;
 }
-
 .btn-ghost:hover {
-  background: rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.04);
 }
-
 .inventory-app__alerts {
   padding: 0 32px;
 }
-
 .inventory-app__content {
   flex: 1;
-  padding: 32px;
+  padding: 32px 32px 40px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 32px;
 }
-
 .inventory-view {
   display: none;
 }
-
 .inventory-view--active {
   display: block;
 }
-
 .inventory-dashboard {
   display: grid;
-  gap: 32px;
+  gap: 24px;
 }
-
 .inventory-dashboard__stats {
   display: grid;
-  gap: 20px;
+  gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
-
 .stat-card {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
-  border-radius: 18px;
-  background: #ffffff;
-  border: 1px solid rgba(37, 99, 235, 0.08);
-  box-shadow: 0 24px 45px -36px rgba(15, 23, 42, 0.45);
+  padding: 18px 20px;
+  border-radius: var(--inventory-radius);
+  background: var(--inventory-surface);
+  border: 1px solid var(--inventory-border);
+  box-shadow: none;
 }
-
 .stat-card__icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4rem;
-  color: #fff;
+  font-size: 1.3rem;
+  color: var(--inventory-accent);
+  background: var(--inventory-accent-soft);
 }
-
 .stat-card__meta {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-
 .stat-card__label {
-  font-size: 0.85rem;
-  color: #64748b;
+  font-size: 0.75rem;
+  color: var(--inventory-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-
 .stat-card__value {
-  font-size: 1.6rem;
-  color: #0f172a;
+  font-size: 1.55rem;
+  color: var(--inventory-text);
+  font-weight: 600;
 }
-
-.stat-card--accent .stat-card__icon {
-  background: linear-gradient(135deg, #2563eb, #1e3a8a);
-}
-
 .stat-card--success .stat-card__icon {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
 }
-
 .stat-card--warning .stat-card__icon {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: rgba(234, 179, 8, 0.18);
+  color: #b45309;
 }
-
 .stat-card--info .stat-card__icon {
-  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  background: rgba(14, 165, 233, 0.18);
+  color: #0369a1;
 }
-
 .inventory-dashboard__activity {
-  background: #ffffff;
-  border-radius: 18px;
+  background: var(--inventory-surface);
+  border-radius: var(--inventory-radius);
   padding: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 24px 45px -38px rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--inventory-border);
 }
-
 .inventory-dashboard__section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-  color: #64748b;
+  margin-bottom: 18px;
+  color: var(--inventory-muted);
 }
-
 .inventory-dashboard__section-header h2 {
   margin: 0;
-  color: #0f172a;
+  color: var(--inventory-text);
+  font-size: 1.15rem;
 }
-
 .inventory-activity-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
-
 .inventory-activity-list__item {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 16px;
-  padding: 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: #f8fafc;
+  padding: 14px 16px;
+  border-radius: var(--inventory-radius);
+  border: 1px solid var(--inventory-border);
+  background: rgba(15, 23, 42, 0.02);
   align-items: center;
 }
-
 .inventory-activity-list__item--empty {
   text-align: center;
-  display: block;
-  color: #64748b;
+  color: var(--inventory-muted);
   font-style: italic;
 }
-
 .inventory-activity-list__badge {
   font-size: 0.75rem;
   font-weight: 700;
@@ -1566,549 +1607,465 @@ include __DIR__ . '/includes/header.php';
   text-align: center;
   min-width: 56px;
 }
-
 .inventory-activity-list__badge--in {
   background: #dcfce7;
   color: #166534;
 }
-
 .inventory-activity-list__badge--out {
   background: #fee2e2;
   color: #b91c1c;
 }
-
 .inventory-activity-list__meta {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-
 .inventory-activity-list__details {
   font-size: 0.85rem;
-  color: #64748b;
+  color: var(--inventory-muted);
 }
-
 .inventory-activity-list__status {
   font-size: 0.8rem;
   font-weight: 600;
+  color: var(--inventory-muted);
 }
-
 .inventory-filter-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   align-items: flex-end;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
-
 .inventory-filter-bar__search {
   position: relative;
   flex: 1;
   min-width: 220px;
 }
-
 .inventory-filter-bar__search input {
   width: 100%;
   padding: 12px 16px 12px 46px;
-  border-radius: 12px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f172a;
+  border-radius: var(--inventory-radius);
+  border: 1px solid var(--inventory-border);
+  background: var(--inventory-surface);
+  color: var(--inventory-text);
 }
-
+.inventory-filter-bar__search input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 1px;
+}
 .inventory-filter-bar__search-icon {
   position: absolute;
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 1rem;
-  color: #94a3b8;
+  pointer-events: none;
+  font-size: 0.95rem;
+  color: var(--inventory-muted);
 }
-
 .inventory-filter-bar__filters {
   display: flex;
   gap: 16px;
-  align-items: center;
+  align-items: flex-end;
 }
-
 .inventory-filter-bar__filters label {
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 0.85rem;
-  color: #475569;
+  color: var(--inventory-muted);
 }
-
 .inventory-filter-bar__filters select {
   padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  min-width: 180px;
+  border-radius: var(--inventory-radius);
+  border: 1px solid var(--inventory-border);
+  background: var(--inventory-surface);
+  color: var(--inventory-text);
 }
-
 .inventory-filter-bar__actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
-
 .inventory-table-wrapper {
-  overflow-x: auto;
-  background: #ffffff;
-  border-radius: 18px;
-  box-shadow: 0 24px 45px -38px rgba(15, 23, 42, 0.35);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--inventory-surface);
+  border-radius: var(--inventory-radius);
+  border: 1px solid var(--inventory-border);
+  overflow: hidden;
 }
-
 .inventory-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
 }
-
 .inventory-table th,
 .inventory-table td {
-  padding: 0.9rem 1.1rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 16px 20px;
   text-align: left;
-  vertical-align: top;
+  border-bottom: 1px solid var(--inventory-border);
 }
-
-.inventory-table th {
-  background: #f1f5f9;
-  font-size: 0.72rem;
+.inventory-table thead th {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #64748b;
+  color: var(--inventory-muted);
+  background: rgba(15, 23, 42, 0.03);
 }
-
-.inventory-table tbody tr:last-child td {
-  border-bottom: none;
+.inventory-table tbody tr:hover {
+  background: rgba(37, 99, 235, 0.06);
 }
-
+.inventory-table--compact td,
+.inventory-table--compact th {
+  padding: 14px 16px;
+}
 .col-qty {
-  width: 80px;
-  text-align: center;
+  width: 90px;
 }
-
-.qty-cell {
-  font-size: 1.15rem;
-  font-weight: 700;
-  text-align: center;
-  color: #111827;
+.col-actions {
+  width: 220px;
 }
-
-.col-actions,
-.actions-cell {
-  width: 160px;
-  text-align: right;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 0.4rem;
-  justify-content: flex-end;
-}
-
 .item-heading {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 4px;
 }
-
-.item-heading strong {
-  font-size: 1.05rem;
-  color: #0f172a;
+.muted {
+  color: var(--inventory-muted);
+  font-size: 0.85rem;
 }
-
-.movement-row td {
-  background: #f8fafc;
-  padding: 0 1rem 1.2rem;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(15, 23, 42, 0.06);
 }
-
+.badge-muted {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--inventory-muted);
+}
+.qty-cell {
+  font-weight: 600;
+}
+.actions-cell {
+  text-align: right;
+}
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.empty-row,
+.empty-row--search {
+  text-align: center;
+  color: var(--inventory-muted);
+  font-style: italic;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.chip-in {
+  background: #dcfce7;
+  color: #166534;
+}
+.chip-out {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  font-size: 0.75rem;
+  color: var(--inventory-muted);
+}
+.tag-link {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--inventory-accent);
+}
+.status-pending {
+  background: rgba(250, 204, 21, 0.2);
+  color: #92400e;
+}
+.status-signed,
+.status-completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #166534;
+}
+.status-cancelled {
+  background: rgba(248, 113, 113, 0.2);
+  color: #b91c1c;
+}
+.movement-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.file-pill {
+  padding: 6px 10px;
+  border-radius: var(--inventory-radius);
+  background: rgba(37, 99, 235, 0.08);
+  font-size: 0.78rem;
+  color: var(--inventory-accent);
+}
+.inventory-transfers {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.inventory-documents {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+.inventory-document-card {
+  background: var(--inventory-surface);
+  border: 1px solid var(--inventory-border);
+  border-radius: var(--inventory-radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.inventory-document-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--inventory-accent);
+}
+.inventory-document-card__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--inventory-accent-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+.inventory-document-card__meta,
+.inventory-document-card__item {
+  font-size: 0.85rem;
+  color: var(--inventory-muted);
+}
+.inventory-document-card__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inventory-documents__empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--inventory-muted);
+  border: 1px dashed var(--inventory-border);
+  border-radius: var(--inventory-radius);
+  background: rgba(15, 23, 42, 0.02);
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  z-index: 50;
+}
+.modal[hidden] {
+  display: none;
+}
+.modal__dialog {
+  background: var(--inventory-surface);
+  border-radius: var(--inventory-radius);
+  box-shadow: 0 24px 48px -32px rgba(15, 23, 42, 0.4);
+  min-width: min(520px, 100%);
+  max-width: 820px;
+}
+.modal__dialog--wide {
+  max-width: 960px;
+}
+.modal__header {
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 1px solid var(--inventory-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.modal__header h3 {
+  margin: 0;
+}
+.modal__close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--inventory-muted);
+}
+.modal__body {
+  padding: 1.25rem 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+.modal__body--history {
+  padding: 1rem 1.5rem 1.5rem;
+}
+.modal__body label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--inventory-text);
+}
+.modal__body input,
+.modal__body select,
+.modal__body textarea {
+  border: 1px solid var(--inventory-border);
+  border-radius: var(--inventory-radius);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  background: var(--inventory-surface);
+  color: var(--inventory-text);
+}
+.modal__footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--inventory-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
 .movement-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding-top: 1rem;
+  gap: 1rem;
 }
-
-.movement-header h4 {
-  margin: 0;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #0f172a;
+.movement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
-
 .movement-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
-
 .movement-list li {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 0.75rem;
-  border: 1px solid #dce4f4;
+  border: 1px solid var(--inventory-border);
+  border-radius: var(--inventory-radius);
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.02);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
-
 .movement-main {
   display: flex;
-  gap: 0.6rem;
   align-items: center;
+  gap: 10px;
 }
-
+.movement-main strong {
+  font-size: 1.05rem;
+  color: var(--inventory-text);
+}
 .movement-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  color: #475569;
+  gap: 8px;
 }
-
-.movement-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.tag {
-  background: #e2e8f0;
-  border-radius: 999px;
-  padding: 0.2rem 0.6rem;
-}
-
-.tag-link {
-  text-decoration: none;
-  color: #1d4ed8;
-  background: #e0e7ff;
-}
-
-.file-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.6rem;
-  background: #ffffff;
-  border-radius: 999px;
-  border: 1px solid #cbd5f5;
-  text-decoration: none;
-  font-size: 0.75rem;
-  color: #1d4ed8;
-}
-
-.file-pill:hover {
-  background: #e0e7ff;
-}
-
-.chip {
-  display: inline-block;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.chip-in {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.chip-out {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.badge-muted {
-  background: #e2e8f0;
-  color: #475569;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-}
-
-.status-pending {
-  background: #fef08a;
-  color: #854d0e;
-}
-
-.status-signed {
-  background: #bbf7d0;
-  color: #166534;
-}
-
-.status-cancelled {
-  background: #fecaca;
-  color: #b91c1c;
-}
-
-.status-in_transit {
-  background: #fde68a;
-  color: #92400e;
-}
-
-.status-completed {
-  background: #d1fae5;
-  color: #15803d;
-}
-
 .movement-wrapper .btn.tiny {
   align-self: flex-start;
 }
-
-.empty-row td {
-  text-align: center;
-  padding: 1.5rem;
-  color: #64748b;
-  font-style: italic;
-}
-
-.inventory-table--compact th,
-.inventory-table--compact td {
-  padding: 0.75rem 0.9rem;
-}
-
-.inventory-documents {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-
-.inventory-document-card {
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  box-shadow: 0 24px 45px -40px rgba(15, 23, 42, 0.4);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.inventory-document-card__icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  background: #edf2ff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-}
-
-.inventory-document-card__meta {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.85rem;
-}
-
-.inventory-document-card__item {
-  margin: 0;
-  color: #0f172a;
-  font-size: 0.9rem;
-}
-
-.inventory-document-card__footer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.inventory-documents__empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 32px;
-  border-radius: 16px;
-  background: #f8fafc;
-  color: #64748b;
-  font-style: italic;
-}
-
-.modal {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 23, 42, 0.48);
-  z-index: 1000;
-  padding: 1.5rem;
-}
-
-.modal[hidden] {
-  display: none;
-}
-
-.modal__dialog {
-  background: #fff;
-  border-radius: 16px;
-  max-width: 520px;
-  width: 100%;
-  box-shadow: 0 30px 70px -40px rgba(15, 23, 42, 0.7);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal__dialog--wide {
-  max-width: 880px;
-}
-
-.modal__header {
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal__header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.modal__close {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: #334155;
-}
-
-.modal__body {
-  padding: 1.25rem;
-  display: grid;
-  gap: 1rem;
-}
-
-.modal__body label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-  color: #1f2937;
-}
-
-.modal__body input,
-.modal__body select,
-.modal__body textarea {
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 0.6rem 0.75rem;
-  font-size: 0.9rem;
-}
-
-.modal__footer {
-  padding: 1rem 1.25rem;
-  border-top: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
 .bulk-grid {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
-
 .bulk-row {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   padding: 1rem;
-  border: 1px dashed #cbd5f5;
-  border-radius: 12px;
-  background: #f8fafc;
+  border: 1px dashed var(--inventory-border);
+  border-radius: var(--inventory-radius);
+  background: rgba(15, 23, 42, 0.02);
 }
-
 .checkbox {
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
-
 @media (max-width: 1080px) {
   .inventory-app {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    min-height: auto;
   }
-
   .inventory-app__sidebar {
-    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--inventory-border);
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
+    gap: 18px;
   }
-
   .inventory-app__nav {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 8px;
-    padding: 12px;
   }
-
   .inventory-app__nav-item {
     flex: 1 1 calc(50% - 8px);
   }
-
   .inventory-app__sidebar-footer {
     display: none;
   }
 }
-
 @media (max-width: 768px) {
   .inventory-app__header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
   }
-
   .inventory-app__header-actions {
     width: 100%;
     justify-content: flex-start;
   }
-
   .inventory-app__content {
     padding: 24px;
   }
-
   .inventory-filter-bar__filters {
     flex-wrap: wrap;
   }
-
   .inventory-filter-bar__actions {
     width: 100%;
   }
 }
-
 @media (max-width: 640px) {
   .inventory-app__nav-item {
     flex: 1 1 100%;
   }
-
   .inventory-table {
     min-width: 100%;
   }
-
-  .inventory-activity-list__item {
-    grid-template-columns: 1fr;
+  .actions-cell {
+    text-align: left;
   }
-
-  .modal {
-    padding: 0.5rem;
+  .action-buttons {
+    justify-content: flex-start;
   }
-
   .modal__dialog {
-    max-height: 95vh;
-    overflow: auto;
+    min-width: 100%;
   }
 }
 </style>
@@ -2178,18 +2135,6 @@ include __DIR__ . '/includes/header.php';
     const searchInput = document.getElementById('inventory-search');
     const searchRows = Array.from(document.querySelectorAll('[data-item-row]'));
     const emptySearchRow = document.querySelector('.empty-row--search');
-    const movementRowMap = new Map();
-
-    searchRows.forEach(row => {
-      const itemId = row.getAttribute('data-item-id');
-      if (!itemId) {
-        return;
-      }
-      const movementRow = document.querySelector(`[data-movement-row-for="${itemId}"]`);
-      if (movementRow) {
-        movementRowMap.set(itemId, movementRow);
-      }
-    });
 
     const applySearch = () => {
       if (!searchInput) {
@@ -2201,10 +2146,6 @@ include __DIR__ . '/includes/header.php';
         const haystack = (row.getAttribute('data-search-haystack') || '').toLowerCase();
         const matches = query === '' || haystack.indexOf(query) !== -1;
         row.hidden = !matches;
-        const itemId = row.getAttribute('data-item-id');
-        if (itemId && movementRowMap.has(itemId)) {
-          movementRowMap.get(itemId).hidden = !matches;
-        }
         if (matches) {
           matchCount++;
         }
